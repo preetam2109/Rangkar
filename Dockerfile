@@ -1,18 +1,18 @@
-# Use the official Maven image to build the JAR
-FROM maven:3.9.6-eclipse-temurin-19 AS build
+# Stage 1: Build the JAR
+FROM maven:3.9.6 AS build
 WORKDIR /app
 
-# Copy project files and build
+# Copy your project files to the container
 COPY . .
-RUN mvn clean package
+RUN mvn clean package -DskipTests
 
-# Use a smaller JDK image to run the JAR
+# Stage 2: Run the JAR on a minimal image
 FROM openjdk:19-slim
 WORKDIR /app
 
-# Copy the built JAR from the previous stage
+# Copy the JAR from the build stage
 COPY --from=build /app/target/*.jar app.jar
 
-# Run the application
+# Set the command to run your application
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
 EXPOSE 9090
