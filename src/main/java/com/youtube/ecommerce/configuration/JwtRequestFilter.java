@@ -31,6 +31,13 @@ public class JwtRequestFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
 
+        // ✅ Skip JWT validation for Swagger and public endpoints
+        if (isPublicEndpoint(request)) {
+            filterChain.doFilter(request, response);
+            return; // Skip further processing
+        }
+
+        // ✅ Retrieve JWT from Authorization header
         final String requestTokenHeader = request.getHeader("Authorization");
 
         String username = null;
@@ -42,27 +49,43 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                 username = jwtUtil.getUsernameFromToken(jwtToken);
                 CURRENT_USER = username;
             } catch (IllegalArgumentException e) {
-                System.out.println("Unable to get JWT Token");
+                System.out.println("Unable to get JWT Token: " + e.getMessage());
             } catch (ExpiredJwtException e) {
-                System.out.println("JWT Token has expired");
+                System.out.println("JWT Token has expired: " + e.getMessage());
             }
         } else {
-            System.out.println("JWT token does not start with Bearer");
+            System.out.println("Authorization header missing or JWT token does not start with Bearer");
         }
 
+        // ✅ Validate JWT and authenticate user
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
 
             UserDetails userDetails = jwtService.loadUserByUsername(username);
 
             if (jwtUtil.validateToken(jwtToken, userDetails)) {
-
-                UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-                usernamePasswordAuthenticationToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(usernamePasswordAuthenticationToken);
+                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                        userDetails, null, userDetails.getAuthorities());
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authToken);
+            } else {
+                System.out.println("Invalid JWT Token");
             }
         }
-        filterChain.doFilter(request, response);
 
+        filterChain.doFilter(request, response);
     }
 
+    /**
+     * ✅ Method to allow public endpoints (Swagger and other open APIs)
+     */
+    private boolean isPublicEndpoint(HttpServletRequest request) {
+        String path = request.getRequestURI();
+
+        return path.startsWith("/swagger-ui")
+                || path.startsWith("/v3/api-docs")
+                || path.startsWith("/authenticate")
+                || path.startsWith("/registerNewUser")
+                || path.startsWith("/getAllProducts")
+                || path.startsWith("/getProductDetailsById");
+    }
 }
